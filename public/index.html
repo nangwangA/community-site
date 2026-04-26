@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>轻社区 - 记录文字，分享日常</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="/js/common.js"></script>
+<script src="/js/nav.js"></script>
+<script>
+(async function() {
+  currentUser = await checkLogin();
+  let html = renderNavbar('home', currentUser);
+  html += `<main class="container">`;
+  html += `
+<section class="hero">
+  <h1>记录文字，分享日常</h1>
+  <p>搜索美好，遇见同频文字</p>
+</section>
+
+<section id="search" class="section">
+  <form class="nav-search" id="searchForm" onsubmit="return doQuickSearch(event)">
+    <input class="input" id="homeSearchInput" placeholder="输入标题、关键词或分类，查找你想看的文章">
+    <button class="btn" type="submit">🔍</button>
+  </form>
+  <div class="quick-tags" id="quickTags"></div>
+  <div class="result-count" id="resultCount"></div>
+</section>
+
+<section id="articles" class="section">
+  <div class="category-filter" id="categoryFilter"></div>
+  <div class="grid" id="articleGrid"></div>
+  <div class="empty show" id="emptyTip">🔎 正在加载文章...</div>
+  <div id="paginationArea"></div>
+</section>
+
+</main>`;
+  html += renderFooter();
+  document.getElementById('app').innerHTML = html;
+
+  const params = new URLSearchParams(window.location.search);
+  let currentCategory = params.get('category') || '';
+  let currentPage = parseInt(params.get('page')) || 1;
+  const pageSize = 9;
+
+  async function loadCategories() {
+    try {
+      const res = await api('/categories');
+      if (res.code === 200 && Array.isArray(res.data)) {
+        const filterEl = document.getElementById('categoryFilter');
+        const tagsEl = document.getElementById('quickTags');
+        
+        let filterHtml = '<a href="#" data-cat="" class="' + (!currentCategory ? 'active' : '') + '">全部</a>';
+        let tagsHtml = '';
+        for (const cat of res.data) {
+          const catActive = currentCategory === String(cat.id) ? 'active' : '';
+          filterHtml += `<a href="#" data-cat="${cat.id}" class="${catActive}">${escapeHtml(cat.name)}</a>`;
+          tagsHtml += `<button class="tag" data-key="${escapeAttr(cat.name)}">${escapeHtml(cat.name)}</button>`;
+        }
+        filterEl.innerHTML = filterHtml;
+        tagsEl.innerHTML = tagsHtml;
+
+        filterEl.querySelectorAll('a[data-cat]').forEach(a => {
+          a.onclick = e => { e.preventDefault(); currentCategory = a.dataset.cat; currentPage = 1; updateUrl(); loadArticles(); };
+        });
+        tagsEl.querySelectorAll('.tag').forEach(t => {
+          t.onclick = () => {
+            const val = t.dataset.key;
+            document.getElementById('homeSearchInput').value = val;
+            window.location.href = '/search.html?q=' + encodeURIComponent(val);
+          };
+        });
+      }
+    } catch(e) {}
+  }
+
+  async function loadArticles() {
+    const grid = document.getElementById('articleGrid');
+    const emptyTip = document.getElementById('emptyTip');
+    const resultCount = document.getElementById('resultCount');
+    const pagArea = document.getElementById('paginationArea');
+
+    grid.innerHTML = ''; pagArea.innerHTML = '';
+
+    let url = `/articles/list?page=${currentPage}&pageSize=${pageSize}`;
+    if (currentCategory) url += `&category_id=${currentCategory}`;
+
+    try {
+      const res = await api(url);
+      if (res.code !== 200 || !res.data) return;
+      const { list, pagination } = res.data;
+      resultCount.textContent = `共 ${pagination.total} 篇文章`;
+
+      if (!list.length) {
+        emptyTip.textContent = '🔎 暂无相关文章，试试其他分类吧～';
+        emptyTip.classList.add('show'); return;
+      }
+      emptyTip.classList.remove('show');
+
+      for (const a of list) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.onclick = () => window.location.href = '/article.html?id=' + a.id;
+        card.innerHTML = `
+          <h3>${escapeHtml(a.title)}</h3>
+          <p class="meta">${a.author_name || '匿名'} · ${formatDate(a.created_at)} · ${a.view_count || 0}次浏览</p>
+          <p class="excerpt">${escapeHtml(a.summary || a.content || '').slice(0, 90)}${(a.summary || a.content || '').length > 90 ? '...' : ''}</p>
+          <span class="label">${escapeHtml(a.category_name || '未分类')}</span>`;
+        grid.appendChild(card);
+      }
+
+      if (pagination.total > pagination.pageSize) {
+        const tp = Math.ceil(pagination.total / pagination.pageSize);
+        let pg = '<div class="pagination">';
+        for (let i = 1; i <= tp; i++) {
+          pg += i === currentPage ? `<span class="active">${i}</span>` : `<a href="#" data-p="${i}">${i}</a>`;
+        }
+        pg += '</div>';
+        pagArea.innerHTML = pg;
+        pagArea.querySelectorAll('a[data-p]').forEach(a => {
+          a.onclick = e => { e.preventDefault(); currentPage = parseInt(a.dataset.p); updateUrl(); loadArticles(); };
+        });
+      }
+    } catch(e) {
+      emptyTip.textContent = '加载失败，请稍后重试';
+      emptyTip.classList.add('show');
+    }
+  }
+
+  function updateUrl() {
+    let qs = [];
+    if (currentCategory) qs.push('category=' + currentCategory);
+    if (currentPage > 1) qs.push('page=' + currentPage);
+    history.replaceState(null, '', qs.length ? '?' + qs.join('&') : '/');
+  }
+
+  window.doQuickSearch = function(e) {
+    e.preventDefault();
+    const kw = document.getElementById('homeSearchInput').value.trim();
+    if (kw) window.location.href = '/search.html?q=' + encodeURIComponent(kw);
+    else showToast('请输入搜索关键词', 'warning');
+  };
+
+  await loadCategories();
+  loadArticles();
+})();
+</script>
+</body>
+</html>

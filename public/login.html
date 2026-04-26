@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 - 轻社区</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+.login-container { width: 100%; max-width: 420px; }
+.login-card {
+  background: rgba(255,255,255,.95); border-radius: 20px; padding: 40px 30px;
+  box-shadow: 0 20px 40px rgba(0,0,0,.1); backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,.2);
+}
+.login-header { text-align: center; margin-bottom: 30px; }
+.login-icon { font-size: 48px; margin-bottom: 15px; }
+.login-title { font-size: 28px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.login-subtitle { color: var(--subtext); font-size: 14px; }
+.error-message {
+  background: #fee; color: #c33; padding: 12px; border-radius: 8px;
+  margin-bottom: 20px; display: none; border: 1px solid #fcc; text-align: center; font-size: 14px;
+}
+.error-message.show { display: block; }
+.field input { height: 44px; border-radius: 10px; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; font-size: 14px; color: var(--subtext); }
+.checkbox-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+.auth-footer { text-align: center; margin-top: 20px; font-size: 14px; color: var(--subtext); }
+.auth-footer a { color: var(--primary); font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="auth-page">
+<div class="login-container">
+<div class="login-card">
+  <div class="login-header">
+    <div class="login-icon">🔐</div>
+    <h1 class="login-title">欢迎回来</h1>
+    <p class="login-subtitle">登录你的账号，继续创作之旅</p>
+  </div>
+
+  <div class="error-message" id="errorMsg"></div>
+
+  <div class="field">
+    <label for="username">用户名</label>
+    <input type="text" id="username" placeholder="请输入用户名" autocomplete="username">
+  </div>
+  <div class="field">
+    <label for="password">密码</label>
+    <input type="password" id="password" placeholder="请输入密码" autocomplete="current-password">
+  </div>
+  <div class="checkbox-row">
+    <input type="checkbox" id="rememberMe">
+    <label for="rememberMe">记住我（30天内免登录）</label>
+  </div>
+  <button class="btn btn-block" style="height:44px;border-radius:10px;font-size:16px;" id="loginBtn">登 录</button>
+
+  <div class="auth-footer">
+    还没有账号？<a href="/register.html">立即注册</a> · <a href="/index.html">返回首页</a>
+  </div>
+</div>
+</div>
+</div>
+
+<script src="/js/common.js"></script>
+<script src="/js/nav.js"></script>
+<script>
+(async function() {
+  currentUser = await checkLogin();
+  if (currentUser) { showToast('已登录，跳转中...', 'info'); setTimeout(() => window.location.href = '/index.html', 800); return; }
+
+  const loginBtn = document.getElementById('loginBtn');
+  const errorMsg = document.getElementById('errorMsg');
+
+  function showError(msg) {
+    errorMsg.textContent = msg; errorMsg.classList.add('show');
+    setTimeout(() => errorMsg.classList.remove('show'), 4000);
+  }
+
+  async function doLogin() {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    const remember = document.getElementById('rememberMe').checked;
+
+    if (!username) return showError('请输入用户名');
+    if (!password) return showError('请输入密码');
+
+    try {
+      const res = await api('/user/login', { method: 'POST', body: JSON.stringify({ username, password, remember }) });
+      if (res.code === 200) {
+        if (res.data && res.data.token) saveToken(res.data.token);
+        showToast('登录成功！', 'success');
+        setTimeout(() => window.location.href = '/index.html', 800);
+      } else { showError(res.message || '登录失败'); }
+    } catch(e) { showError('网络错误，请稍后重试'); }
+  }
+
+  loginBtn.onclick = doLogin;
+  document.getElementById('password').onkeypress = e => { if (e.key === 'Enter') doLogin(); };
+})();
+</script>
+</body>
+</html>

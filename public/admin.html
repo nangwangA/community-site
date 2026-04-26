@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理后台 - 轻社区</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+.admin-layout { display: flex; gap: 0; }
+.admin-sidebar {
+  width: 220px; flex-shrink: 0; background: var(--card);
+  border-right: 1px solid var(--line); min-height: calc(100vh - 68px);
+  position: sticky; top: 68px; padding: 20px 0;
+}
+.admin-logo { padding: 0 18px 16px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.admin-logo h2 { font-size: 17px; color: var(--primary); display: flex; align-items: center; gap: 8px; }
+.admin-logo p { font-size: 11px; color: var(--subtext); margin-top: 4px; }
+
+.nav-item { display: block; padding: 10px 18px; color: var(--subtext); text-decoration: none; font-size: 14px; transition: all .15s; border-left: 3px solid transparent; cursor: pointer; background: none; width: 100%; text-align: left; border-top: none; border-right: none; border-bottom: none; }
+.nav-item:hover { color: var(--primary); background: var(--primary-light); }
+.nav-item.active { color: var(--primary); background: var(--primary-light); border-left-color: var(--primary); font-weight: 500; }
+.nav-item .badge { float: right; background: var(--danger); color: #fff; font-size: 10px; padding: 1px 7px; border-radius: 999px; }
+
+.admin-main { flex: 1; min-width: 0; padding: 24px 28px 48px; }
+
+.page-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+.page-title-row h1 { font-size: 22px; color: var(--primary); }
+.page-sub { font-size: 13px; color: var(--subtext); margin-top: 2px; }
+
+.stats-grid-admin { display: grid; grid-template-columns: repeat(5,1fr); gap: 14px; margin-bottom: 28px; }
+.stat-card-admin {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 20px; box-shadow: var(--shadow); text-align: center;
+  transition: transform .2s;
+}
+.stat-card-admin:hover { transform: translateY(-2px); }
+.stat-num { font-size: 32px; font-weight: 700; color: var(--primary); line-height: 1.2; }
+.stat-label { font-size: 13px; color: var(--subtext); margin-top: 4px; }
+.stat-card-admin:nth-child(1) .stat-num { color: #5b7187; }
+.stat-card-admin:nth-child(2) .stat-num { color: #b08968; }
+.stat-card-admin:nth-child(3) .stat-num { color: #6f8c76; }
+.stat-card-admin:nth-child(4) .stat-num { color: #9b7b59; }
+
+.toolbar { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; align-items: center; }
+.search-input-sm {
+  border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px;
+  font-size: 13px; outline: none; background: #f8f5ef; color: var(--text);
+  min-width: 200px; flex: 1; max-width: 320px;
+}
+.search-input-sm:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(63,83,104,.08); }
+
+.status-filter-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.sf-btn {
+  border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px;
+  font-size: 13px; cursor: pointer; background: #f3f0ea; color: var(--subtext);
+  transition: all .15s;
+}
+.sf-btn:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
+.sf-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+.data-table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--line); background: var(--card); box-shadow: var(--shadow); }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table thead { background: #f3f0ea; }
+.data-table th { padding: 11px 14px; text-align: left; font-weight: 600; color: var(--primary); white-space: nowrap; border-bottom: 2px solid var(--line); }
+.data-table td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; color: var(--text); }
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: #faf8f3; }
+
+.status-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.sb-published { background: #d4edda; color: #155724; }
+.sb-draft { background: #fff3cd; color: #856404; }
+.sb-pending { background: #cce5ff; color: #004085; }
+.sb-offline { background: #f8d7da; color: #721c24; }
+.sb-active { background: #d1ecf1; color: #0c5460; }
+.sb-disabled { background: #e2e3e5; color: #383d41; }
+
+.action-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.abtn {
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px;
+  font-size: 12px; cursor: pointer; background: #fff; color: var(--subtext);
+  transition: all .15s;
+}
+.abtn:hover { border-color: var(--primary); color: var(--primary); }
+.abtn-danger:hover { border-color: var(--danger); color: var(--danger); }
+.abtn-success:hover { border-color: var(--success); color: var(--success); }
+.abtn-warning:hover { border-color: var(--warning); color: var(--warning); }
+
+@media(max-width:900px) {
+  .admin-layout { flex-direction: column; }
+  .admin-sidebar { width: 100%; min-height: auto; position: static; border-right: none; border-bottom: 1px solid var(--line); }
+  .nav-item { display: inline-block; border-left: none; border-bottom: 3px solid transparent; }
+  .nav-item.active { border-left-color: transparent; border-bottom-color: var(--primary); }
+  .stats-grid-admin { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+  .admin-main { padding: 16px; }
+}
+@media(max-width:500px) { .stats-grid-admin { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="/js/common.js"></script>
+<script src="/js/nav.js"></script>
+<script>
+(async function() {
+  currentUser = await checkLogin();
+  if (!currentUser || currentUser.role !== 1) {
+    showToast('权限不足，仅管理员可访问', 'error');
+    setTimeout(() => window.location.href = '/index.html', 1500);
+    return;
+  }
+
+  let html = renderNavbar('admin', currentUser);
+  html += `<div class="admin-layout">`;
+
+  html += `<aside class="admin-sidebar">
+<div class="admin-logo"><h2>🛡️ 管理中心</h2><p>${escapeHtml(currentUser.nickname || currentUser.username)} · 管理员</p></div>
+<nav id="sideNav">
+<button class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">📊 数据概览</button>
+<button class="nav-item" data-tab="pending" onclick="switchTab('pending')">⏳ 待审核 <span class="badge" id="pendingBadge" style="display:none;">0</span></button>
+<button class="nav-item" data-tab="articles" onclick="switchTab('articles')">📝 文章管理</button>
+<button class="nav-item" data-tab="comments" onclick="switchTab('comments')">💬 评论管理</button>
+<button class="nav-item" data-tab="users" onclick="switchTab('users')">👥 用户管理</button>
+</nav></aside>`;
+
+  html += `<div class="admin-main" id="adminMain"></div>`;
+  html += `</div>`;
+  document.getElementById('app').innerHTML = html;
+
+  const tabs = ['dashboard','pending','articles','comments','users'];
+  let currentTab = new URLSearchParams(window.location.search).get('tab') || 'dashboard';
+  let articleStatusFilter = '';
+  let articleSearch = '';
+
+  window.switchTab = function(key) {
+    currentTab = key;
+    window.history.replaceState(null, '', '?tab=' + key);
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === key));
+    loadTab();
+  };
+
+  async function loadTab() {
+    const el = document.getElementById('adminMain');
+    switch (currentTab) {
+      case 'dashboard': await renderDashboard(el); break;
+      case 'pending': await renderPending(el); break;
+      case 'articles': await renderArticles(el); break;
+      case 'comments': await renderComments(el); break;
+      case 'users': await renderUsers(el); break;
+    }
+  }
+
+  async function renderDashboard(el) {
+    showLoading(el);
+    const res = await api('/admin/dashboard');
+    if (res.code !== 200) return hideLoading(el, '<p style="color:var(--danger)">加载失败</p>');
+    const d = res.data;
+
+    const pb = document.getElementById('pendingBadge');
+    if (d.pending_count > 0) { pb.textContent = d.pending_count; pb.style.display = 'inline'; } else { pb.style.display = 'none'; }
+
+    hideLoading(el, `
+<div class="page-title-row"><div><h1>数据概览</h1><p class="page-sub">全站运营数据一览</p></div></div>
+
+<div class="stats-grid-admin">
+  <div class="stat-card-admin"><div class="stat-num">${d.user_count}</div><div class="stat-label">注册用户</div></div>
+  <div class="stat-card-admin"><div class="stat-num">${d.article_count}</div><div class="stat-label">全部文章</div></div>
+  <div class="stat-card-admin"><div class="stat-num">${d.published_count}</div><div class="stat-label">已发布</div></div>
+  <div class="stat-card-admin"><div class="stat-num" style="color:#3b82f6;">${d.pending_count || 0}</div><div class="stat-label">待审核</div></div>
+  <div class="stat-card-admin"><div class="stat-num">${d.comment_count}</div><div class="stat-label">全部评论</div></div>
+</div>
+
+<div style="background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);">
+<h3 style="color:var(--primary);font-size:16px;margin-bottom:16px;">📋 快捷操作</h3>
+<div style="display:flex;gap:10px;flex-wrap:wrap;">
+<a href="/publish.html" style="display:inline-block;padding:10px 22px;background:var(--primary);color:#fff;border-radius:999px;text-decoration:none;font-size:14px;">✏️ 写新文章</a>
+<button onclick="switchTab('articles')" style="padding:10px 22px;border:1px solid var(--line);background:#f3f0ea;color:var(--primary);border-radius:999px;font-size:14px;cursor:pointer;">📝 管理文章</button>
+<button onclick="switchTab('comments')" style="padding:10px 22px;border:1px solid var(--line);background:#f3f0ea;color:var(--primary);border-radius:999px;font-size:14px;cursor:pointer;">💬 查看评论</button>
+<button onclick="switchTab('users')" style="padding:10px 22px;border:1px solid var(--line);background:#f3f0ea;color:var(--primary);border-radius:999px;font-size:14px;cursor:pointer;">👥 用户列表</button>
+</div>
+</div>`);
+  }
+
+  async function renderPending(el) {
+    showLoading(el);
+    const page = getPageParam('ppage') || 1;
+    const res = await api(`/admin/articles?page=${page}&pageSize=10&status=3`);
+    if (res.code !== 200) return hideLoading(el, '<p style="color:var(--danger)">加载失败</p>');
+    const { list, pagination } = res.data;
+
+    if (!list.length) {
+      return hideLoading(el, `
+<div class="page-title-row"><div><h1>⏳ 待审核文章</h1><p class="page-sub">用户提交的文章需要审核后才能公开显示</p></div></div>
+<div style="background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:48px 24px;text-align:center;box-shadow:var(--shadow);">
+<p style="font-size:16px;color:var(--subtext);">✅ 暂无待审核文章</p>
+<p style="font-size:13px;color:var(--subtext);margin-top:8px;">所有已提交的文章均已处理完毕</p>
+</div>`);
+    }
+
+    hideLoading(el, `
+<div class="page-title-row"><div><h1>⏳ 待审核文章</h1><p class="page-sub">共 ${pagination.total} 篇待审核 · 请及时处理</p></div></div>
+
+<div class="data-table-wrap">
+<table class="data-table">
+<thead><tr><th>ID</th><th>标题</th><th>作者</th><th>分类</th><th>内容摘要</th><th>提交时间</th><th>操作</th></tr></thead>
+<tbody>${list.map(a => `<tr>
+<td style="color:var(--subtext);font-size:12px;">${a.id}</td>
+<td style="max-width:200px;"><a href="/article.html?id=${a.id}" style="color:var(--primary);text-decoration:none;font-weight:500;">${escapeHtml(a.title)}</a></td>
+<td>${escapeHtml(a.author_name)}</td>
+<td>${escapeHtml(a.category_name||'-')}</td>
+<td style="max-width:220px;font-size:12px;color:var(--subtext);">${escapeHtml((a.content||'').substring(0,60))}...</td>
+<td style="font-size:12px;color:var(--subtext);white-space:nowrap;">${formatDate(a.created_at)}</td>
+<td class="action-btns">
+<a href="/article.html?id=${a.id}" target="_blank" class="abtn">预览</a>
+<button class="abtn abtn-success" onclick="reviewArticle(${a.id},'approve')">✅ 通过</button>
+<button class="abtn abtn-danger" onclick="reviewArticle(${a.id},'reject')">❌ 拒绝</button>
+</td></tr>`).join('')}</tbody>
+</table></div>
+${renderPagination(pagination,'ppage')}`);
+    bindPagination('ppage', loadTab);
+  }
+
+  async function renderArticles(el) {
+    showLoading(el);
+    const page = getPageParam('apage') || 1;
+    let url = `/admin/articles?page=${page}&pageSize=10`;
+    if (articleStatusFilter !== '') url += `&status=${articleStatusFilter}`;
+    if (articleSearch) url += `&keyword=${encodeURIComponent(articleSearch)}`;
+    const res = await api(url);
+    if (res.code !== 200) return hideLoading(el, '<p style="color:var(--danger)">加载失败</p>');
+    const { list, pagination } = res.data;
+
+    const statusMap = { 0: { cls:'sb-draft', label:'草稿' }, 1: { cls:'sb-published', label:'已发布' }, 2: { cls:'sb-offline', label:'已拒绝/下架' }, 3: { cls:'sb-pending', label:'待审核' } };
+
+    hideLoading(el, `
+<div class="page-title-row"><div><h1>文章管理</h1><p class="page-sub">全站文章审核与管理</p></div></div>
+
+<div class="toolbar">
+<input class="search-input-sm" id="artSearchInput" placeholder="搜索标题或作者..." value="${escapeHtml(articleSearch)}">
+<div class="status-filter-group">
+<span class="sf-btn ${articleStatusFilter===''?'active':''}" onclick="setArtStatus('')">全部</span>
+<span class="sf-btn ${articleStatusFilter==='3'?'active':''}" onclick="setArtStatus('3')">待审核</span>
+<span class="sf-btn ${articleStatusFilter==='0'?'active':''}" onclick="setArtStatus('0')">草稿</span>
+<span class="sf-btn ${articleStatusFilter==='1'?'active':''}" onclick="setArtStatus('1')">已发布</span>
+<span class="sf-btn ${articleStatusFilter==='2'?'active':''}" onclick="setArtStatus('2')">已拒绝</span>
+</div>
+</div>
+
+<div class="data-table-wrap">
+<table class="data-table">
+<thead><tr><th>ID</th><th>标题</th><th>作者</th><th>分类</th><th>状态</th><th>浏览/点赞</th><th>发布时间</th><th>操作</th></tr></thead>
+<tbody>${list.map(a => `<tr>
+<td style="color:var(--subtext);font-size:12px;">${a.id}</td>
+<td style="max-width:220px;"><a href="/article.html?id=${a.id}" style="color:var(--primary);text-decoration:none;font-weight:500;">${escapeHtml(a.title)}</a></td>
+<td>${escapeHtml(a.author_name)}</td>
+<td>${escapeHtml(a.category_name||'-')}</td>
+<td><span class="status-badge ${statusMap[a.status]?.cls||''}">${statusMap[a.status]?.label||'未知'}</span></td>
+<td style="font-size:12px;color:var(--subtext);">👁${a.view_count||0} ❤️${a.like_count||0}</td>
+<td style="font-size:12px;color:var(--subtext);white-space:nowrap;">${formatDate(a.created_at)}</td>
+<td class="action-btns">
+<a href="/article.html?id=${a.id}" class="abtn">查看</a>
+<button class="abtn abtn-success" onclick="toggleArticleStatus(${a.id},${a.status})">${a.status===2?'恢复':'下架'}</button>
+<button class="abtn abtn-danger" onclick="deleteArticle(${a.id})">删除</button>
+</td></tr>`).join('')}</tbody>
+</table></div>
+${renderPagination(pagination,'apage')}`);
+    bindPagination('apage', loadTab);
+    document.getElementById('artSearchInput').addEventListener('keydown', e => { if(e.key==='Enter'){ articleSearch=e.target.value.trim(); loadTab(); } });
+  }
+
+  window.setArtStatus = function(s) { articleStatusFilter=s; loadTab(); };
+
+  async function renderComments(el) {
+    showLoading(el);
+    const page = getPageParam('cpage') || 1;
+    const res = await api(`/admin/comments?page=${page}&pageSize=15`);
+    if (res.code !== 200) return;
+
+    const { list, pagination } = res.data;
+    hideLoading(el, `
+<div class="page-title-row"><div><h1>评论管理</h1><p class="page-sub">审核和管理用户评论</p></div></div>
+
+<div class="data-table-wrap">
+<table class="data-table">
+<thead><tr><th>ID</th><th>评论内容</th><th>评论者</th><th>所属文章</th><th>时间</th><th>操作</th></tr></thead>
+<tbody>${list.map(c => `<tr>
+<td style="color:var(--subtext);font-size:12px;">${c.id}</td>
+<td style="max-width:260px;font-size:13px;">${escapeHtml(c.content)}</td>
+<td>${escapeHtml(c.user_name)}</td>
+<td style="max-width:160px;"><a href="/article.html?id=${c.article_id}" style="color:var(--primary);text-decoration:none;">${escapeHtml(c.article_title)}</a></td>
+<td style="font-size:12px;color:var(--subtext);white-space:nowrap;">${formatDate(c.created_at)}</td>
+<td><button class="abtn abtn-danger" onclick="deleteComment(${c.id})">删除</button></td>
+</tr>`).join('')}</tbody>
+</table></div>
+${renderPagination(pagination,'cpage')}`);
+    bindPagination('cpage', loadTab);
+  }
+
+  async function renderUsers(el) {
+    showLoading(el);
+    const page = getPageParam('upage') || 1;
+    const res = await api(`/admin/users?page=${page}&pageSize=15`);
+    if (res.code !== 200) return;
+
+    const { list, pagination } = res.data;
+    hideLoading(el, `
+<div class="page-title-row"><div><h1>用户管理</h1><p class="page-sub">查看和管理注册用户</p></div></div>
+
+<div class="data-table-wrap">
+<table class="data-table">
+<thead><tr><th>ID</th><th>用户名</th><th>昵称</th><th>邮箱</th><th>角色</th><th>状态</th><th>注册时间</th><th>操作</th></tr></thead>
+<tbody>${list.map(u => `<tr>
+<td style="color:var(--subtext);font-size:12px;">${u.id}</td>
+<td style="font-weight:500;">${escapeHtml(u.username)}</td>
+<td>${escapeHtml(u.nickname||'-')}</td>
+<td style="font-size:12px;color:var(--subtext);">${u.email||'-'}</td>
+<td>${u.role===1?'<span style="color:#f59e0b;font-weight:600;">管理员</span>':'普通用户'}</td>
+<td><span class="status-badge ${u.status===1?'sb-active':'sb-disabled'}">${u.status===1?'正常':'禁用'}</span></td>
+<td style="font-size:12px;color:var(--subtext);white-space:nowrap;">${formatDate(u.created_at)}</td>
+<td>${u.role!==1?`<button class="abtn abtn-warning" onclick="toggleUserStatus(${u.id},${u.status})">${u.status===1?'禁用':'启用'}</button>`:'<span style="color:var(--subtext);font-size:12px;">-</span>'}</td>
+</tr>`).join('')}</tbody>
+</table></div>
+${renderPagination(pagination,'upage')}`);
+    bindPagination('upage', loadTab);
+  }
+
+  function renderPagination(pg, paramKey) {
+    if (pg.total <= pg.pageSize) return '';
+    const tp = Math.ceil(pg.total / pg.pageSize);
+    const cur = parseInt(new URLSearchParams(location.search).get(paramKey)||'1');
+    let h = '<div class="pagination" style="margin-top:18px;">';
+    if (cur > 1) h += `<a href="#" data-p="${cur-1}">‹ 上一页</a>`;
+    for(let i=Math.max(1,cur-2);i<=Math.min(tp,cur+2);i++) h+= i===cur?`<span class="active">${i}</span>`:`<a href="#" data-p="${i}">${i}</a>`;
+    if (cur < tp) h += `<a href="#" data-p="${cur+1}">下一页 ›</a>`;
+    h += '</div>';
+    return h;
+  }
+
+  function bindPagination(paramKey, reloadFn) {
+    setTimeout(() => {
+      document.querySelectorAll('.pagination a[data-p]').forEach(a => {
+        a.onclick = e => {
+          e.preventDefault();
+          const u = new URLSearchParams(location.search);
+          u.set(paramKey, a.dataset.p);
+          history.replaceState(null, '', '?' + u.toString());
+          reloadFn();
+          window.scrollTo({ top: 200, behavior: 'smooth' });
+        };
+      });
+    }, 50);
+  }
+
+  window.toggleArticleStatus = async function(id, cur) {
+    const action = cur === 2 ? '恢复' : '下架';
+    if (!confirm(`确定${action}该文章？`)) return;
+    const r = await api(`/admin/articles/${id}/status`, { method: 'PUT' });
+    showToast(r.code===200?r.message:r.message, r.code===200?'success':'error');
+    if(r.code===200) loadTab();
+  };
+  window.reviewArticle = async function(id, action) {
+    const label = action === 'approve' ? '通过' : '拒绝';
+    if (!confirm(`确定${label}该文章的审核？`)) return;
+    const r = await api(`/admin/articles/${id}/review`, { method: 'PUT', body: JSON.stringify({ action }) });
+    showToast(r.code===200?r.message:r.message, r.code===200?'success':'error');
+    if(r.code===200) loadTab();
+  };
+  window.deleteArticle = async function(id) { if(!confirm('确定删除此文章？'))return; const r=await api(`/admin/articles/${id}`,{method:'DELETE'}); showToast(r.code===200?'删除成功':r.message,r.code===200?'success':'error'); if(r.code===200)loadTab(); };
+  window.deleteComment = async function(id) { if(!confirm('确定删除此评论？'))return; const r=await api(`/admin/comments/${id}`,{method:'DELETE'}); showToast(r.code===200?'删除成功':r.message,r.code===200?'success':'error'); if(r.code===200)loadTab(); };
+  window.toggleUserStatus = async function(id, cur) {
+    const action = cur === 1 ? '禁用' : '启用';
+    if(!confirm(`确定${action}该用户？`))return;
+    const r=await api(`/admin/users/${id}/status`,{method:'PUT'});
+    showToast(r.code===200?r.message:r.message,r.code===200?'success':'error');
+    if(r.code===200)loadTab();
+  };
+
+  switchTab(currentTab);
+})();
+</script>
+</body>
+</html>

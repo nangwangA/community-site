@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>注册 - 轻社区</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+body { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); min-height: 100vh; }
+.login-container { width: 100%; max-width: 460px; }
+.login-card {
+  background: rgba(255,255,255,.95); border-radius: 20px; padding: 40px 30px;
+  box-shadow: 0 20px 40px rgba(0,0,0,.1); backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,.2);
+}
+.login-header { text-align: center; margin-bottom: 28px; }
+.login-icon { font-size: 48px; margin-bottom: 15px; }
+.login-title { font-size: 28px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.login-subtitle { color: var(--subtext); font-size: 14px; }
+.error-message {
+  background: #fee; color: #c33; padding: 12px; border-radius: 8px;
+  margin-bottom: 18px; display: none; border: 1px solid #fcc; text-align: center; font-size: 14px;
+}
+.error-message.show { display: block; }
+.field input { height: 42px; border-radius: 10px; }
+.auth-footer { text-align: center; margin-top: 18px; font-size: 14px; color: var(--subtext); }
+.auth-footer a { color: var(--primary); font-weight: 500; }
+.avatar-preview-row {
+  display: flex; align-items: center; gap: 14px; margin-top: 8px;
+}
+.avatar-preview-box {
+  width: 56px; height: 56px; border-radius: 50%; background: #8f9aa5;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 18px; font-weight: 600; overflow: hidden;
+}
+.avatar-preview-box img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-hint { font-size: 13px; color: var(--subtext); }
+</style>
+</head>
+<body>
+<div class="auth-page">
+<div class="login-container">
+<div class="login-card">
+  <div class="login-header">
+    <div class="login-icon">✨</div>
+    <h1 class="login-title">加入轻社区</h1>
+    <p class="login-subtitle">创建账号，开始你的文字之旅</p>
+  </div>
+
+  <div class="error-message" id="errorMsg"></div>
+
+  <div class="field">
+    <label for="username">用户名</label>
+    <input type="text" id="username" placeholder="2-20位，支持中英文和数字">
+  </div>
+  <div class="field">
+    <label for="email">邮箱（选填）</label>
+    <input type="email" id="email" placeholder="用于找回密码">
+  </div>
+  <div class="field">
+    <label for="password">密码</label>
+    <input type="password" id="password" placeholder="至少6位">
+  </div>
+  <div class="field">
+    <label for="confirmPassword">确认密码</label>
+    <input type="password" id="confirmPassword" placeholder="再次输入密码">
+  </div>
+  <div class="field">
+    <label for="avatarFile">头像上传（选填）</label>
+    <input type="file" id="avatarFile" accept="image/*" style="padding:4px 12px;">
+    <div class="avatar-preview-row">
+      <div class="avatar-preview-box" id="avatarPreviewBox">预</div>
+      <span class="avatar-hint" id="avatarHint">请选择图片文件</span>
+    </div>
+  </div>
+
+  <button class="btn btn-block" style="height:44px;border-radius:10px;font-size:16px;" id="registerBtn">注 册</button>
+
+  <div class="auth-footer">
+    已有账号？<a href="/login.html">立即登录</a> · <a href="/index.html">返回首页</a>
+  </div>
+</div>
+</div>
+</div>
+
+<script src="/js/common.js"></script>
+<script src="/js/nav.js"></script>
+<script>
+(async function() {
+  currentUser = await checkLogin();
+  if (currentUser) { showToast('已登录，跳转中...', 'info'); setTimeout(() => window.location.href = '/index.html', 800); return; }
+
+  const registerBtn = document.getElementById('registerBtn');
+  const errorMsg = document.getElementById('errorMsg');
+  const avatarFile = document.getElementById('avatarFile');
+  const avatarPreviewBox = document.getElementById('avatarPreviewBox');
+  const avatarHint = document.getElementById('avatarHint');
+
+  let avatarDataUrl = null;
+
+  function showError(msg) {
+    errorMsg.textContent = msg; errorMsg.classList.add('show');
+    setTimeout(() => errorMsg.classList.remove('show'), 4000);
+  }
+
+  avatarFile.onchange = function() {
+    const file = this.files && this.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { showError('请选择图片文件'); return; }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      avatarDataUrl = e.target.result;
+      avatarPreviewBox.innerHTML = `<img src="${avatarDataUrl}" alt="预览">`;
+      avatarHint.textContent = file.name + ' (' + Math.round(file.size/1024) + 'KB)';
+    };
+    reader.readAsDataURL(file);
+  };
+
+  async function doRegister() {
+    const username = document.getElementById('username').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+
+    if (username.length < 2 || username.length > 20) return showError('用户名需要2-20位');
+    if (password.length < 6) return showError('密码至少6位');
+    if (password !== confirmPassword) return showError('两次输入的密码不一致');
+
+    try {
+      let body = { username, password };
+      if (email) body.email = email;
+
+      const res = await api('/user/register', { method: 'POST', body: JSON.stringify(body) });
+      if (res.code !== 200) return showError(res.message || '注册失败');
+
+      if (avatarDataUrl) {
+        try {
+          await api('/user/avatar', { method: 'PUT', body: JSON.stringify({ avatar: avatarDataUrl }) });
+        } catch(e) {}
+      }
+
+      showToast('注册成功！正在自动登录...', 'success');
+      setTimeout(() => window.location.href = '/login.html', 1200);
+    } catch(e) { showError('网络错误，请稍后重试'); }
+  }
+
+  registerBtn.onclick = doRegister;
+})();
+</script>
+</body>
+</html>

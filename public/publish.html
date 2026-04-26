@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>写文章 - 轻社区</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+.publish-layout { display: flex; gap: 20px; align-items: flex-start; }
+.editor-main { flex: 1; min-width: 0; }
+.editor-sidebar { width: 280px; flex-shrink: 0; }
+@media(max-width:768px) { .publish-layout { flex-direction: column; } .editor-sidebar { width: 100%; } }
+
+.form-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); margin-bottom: 16px; }
+.form-card h2 { font-size: 18px; color: var(--primary); margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+
+.field { margin-bottom: 14px; }
+.field label { display: block; margin-bottom: 6px; color: #5f5b56; font-size: 13px; font-weight: 500; }
+.field input, .field select, .field textarea {
+  width: 100%; border: 1px solid var(--line); background: #f8f5ef;
+  border-radius: 10px; padding: 10px 12px; font: inherit; color: var(--text);
+  outline: none; transition: border-color .2s;
+}
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(63,83,104,.08); }
+
+.title-input { font-size: 22px !important; font-weight: 600; padding: 14px 16px !important; }
+
+.editor-toolbar {
+  display: flex; gap: 4px; flex-wrap: wrap; padding: 8px;
+  background: #f3f0ea; border: 1px solid var(--line);
+  border-radius: 10px 10px 0 0; border-bottom: none;
+}
+.editor-toolbar button {
+  border: 1px solid var(--line); background: #fff; border-radius: 6px;
+  padding: 5px 10px; cursor: pointer; font-size: 13px; color: var(--subtext);
+  transition: all .15s;
+}
+.editor-toolbar button:hover { color: var(--primary); border-color: var(--primary); background: var(--primary-light); }
+
+.editor-textarea {
+  min-height: 360px; resize: vertical; border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important; line-height: 1.8; font-size: 15px;
+}
+
+.editor-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 4px; font-size: 13px; color: var(--subtext);
+}
+.word-count b { color: var(--primary); }
+.draft-status { display: flex; align-items: center; gap: 6px; }
+.draft-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+.draft-saved .draft-dot { background: var(--success); animation: none; }
+
+.action-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.btn-publish { background: var(--primary); color: #fff; height: 42px; padding: 0 28px; border: none; border-radius: 999px; cursor: pointer; font-size: 15px; font-weight: 500; transition: all .2s; }
+.btn-publish:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(63,83,104,.25); }
+.btn-draft { background: transparent; color: var(--primary); border: 1px solid var(--line); height: 42px; padding: 0 18px; border-radius: 999px; cursor: pointer; font-size: 14px; transition: all .2s; }
+.btn-draft:hover { background: var(--primary-light); }
+
+.sidebar-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); margin-bottom: 14px; }
+.sidebar-card h3 { font-size: 14px; color: var(--primary); margin-bottom: 12px; }
+.tip-list { list-style: none; }
+.tip-list li { padding: 6px 0; font-size: 13px; color: var(--subtext); display: flex; gap: 8px; align-items: flex-start; }
+.tip-list li::before { content: '·'; color: var(--accent); font-weight: bold; }
+
+.preview-card { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%) scale(.95); z-index: 200; width: min(600px,90vw); max-height: 80vh; overflow-y: auto; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; box-shadow: 0 20px 60px rgba(55,70,85,.2); opacity: 0; visibility: hidden; transition: all .25s ease; }
+.preview-card.show { opacity: 1; visibility: visible; transform: translate(-50%,-50%) scale(1); }
+.preview-card h2 { font-size: 20px; margin-bottom: 12px; color: var(--primary); }
+.preview-body { color: var(--text); line-height: 1.8; white-space: pre-wrap; word-break: break-word; }
+.preview-close { position: absolute; top: 12px; right: 14px; background: none; border: none; font-size: 20px; cursor: pointer; color: var(--subtext); }
+
+.unsaved-banner {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
+  background: linear-gradient(135deg, #b08968, #a07858);
+  color: #fff; text-align: center; padding: 10px; font-size: 14px;
+  transform: translateY(100%); transition: transform .3s ease;
+}
+.unsaved-banner.show { transform: translateY(0); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="/js/common.js"></script>
+<script src="/js/nav.js"></script>
+<script>
+(async function() {
+  currentUser = await checkLogin();
+  if (!currentUser) { window.location.href = '/login.html'; return; }
+
+  const params = new URLSearchParams(window.location.search);
+  const isEdit = !!params.get('id');
+  const editId = params.get('id');
+
+  let html = renderNavbar('publish', currentUser);
+  html += `<main class="main-layout"><div class="container" style="padding-top:24px;padding-bottom:48px;">
+<div class="publish-layout">
+
+<div class="editor-main">
+  <div class="form-card">
+    <h2>✏️ ${isEdit ? '编辑文章' : '撰写新文章'}</h2>
+    <form id="articleForm" autocomplete="off">
+      <div class="field">
+        <label for="artTitle">文章标题 *</label>
+        <input type="text" id="artTitle" class="title-input" placeholder="请输入一个吸引人的标题..." maxlength="200" required>
+      </div>
+
+      <div class="field">
+        <label for="artCategory">选择分类</label>
+        <select id="artCategory"></select>
+      </div>
+
+      <div class="field">
+        <label for="artSummary">摘要（选填）</label>
+        <input type="text" id="artSummary" placeholder="简短描述，不填则自动截取正文前120字">
+      </div>
+
+      <div class="field">
+        <label for="artContent">正文内容 *</label>
+        <div class="editor-toolbar">
+          <button type="button" onclick="insertFormat('**','**')" title="加粗">B</button>
+          <button type="button" onclick="insertFormat('*','*')" title="斜体"><i>I</i></button>
+          <button type="button" onclick="insertFormat('~~','~~')" title="删除线">S</button>
+          <button type="button" onclick="insertLine('---')">─</button>
+          <span style="width:1px;background:var(--line);align-self:stretch;margin:0 4px;"></span>
+          <button type="button" onclick="insertFormat('<h2>','</h2>')">H2</button>
+          <button type="button" onclick="insertFormat('<pre>\\n','\\n</pre>')" title="代码块">&lt;/&gt;</button>
+          <button type="button" onclick="insertFormat('<blockquote>','</blockquote>')" title="引用">❝</button>
+          <button type="button" onclick="insertFormat('<ul><li>','</li></ul>')" title="列表">☰</button>
+          <button type="button" onclick="showPreview()" title="预览">👁 预览</button>
+        </div>
+        <textarea id="artContent" class="editor-textarea" placeholder="开始书写你的想法...&#10;&#10;支持基础排版：&#10;- **文字** 加粗&#10;- *文字* 斜体&#10;- ~~文字~~ 删除线&#10;- HTML标签也可直接使用" required></textarea>
+        <div class="editor-footer">
+          <div class="draft-status" id="draftStatus">
+            <span class="draft-dot"></span>
+            <span id="draftText">编辑中...</span>
+          </div>
+          <div class="word-count">已写 <b id="wordCount">0</b> 字</div>
+        </div>
+      </div>
+
+      <div class="action-bar">
+        <button type="submit" class="btn-publish" id="btnPublish">${currentUser.role === 1 ? '📤 发布文章' : '📤 提交审核'}</button>
+        <button type="button" class="btn-draft" onclick="saveDraft()">💾 存草稿</button>
+        <a href="/index.html" class="btn-draft" style="margin-left:auto;text-decoration:none;">取消</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<aside class="editor-sidebar">
+  <div class="sidebar-card">
+    <h3>📝 写作小贴士</h3>
+    <ul class="tip-list">
+      <li>标题建议简洁有吸引力，不超过200字</li>
+      <li>正文支持换行分段和基础排版语法</li>
+      <li>可随时保存草稿，下次打开自动恢复</li>
+      ${currentUser.role !== 1 ? '<li style="color:var(--warning);font-weight:500;">⚠️ 普通用户提交的文章需站长审核通过后才会公开显示</li>' : '<li>管理员发布的文章将直接发布，无需审核</li>'}
+      <li>发布后可在个人中心管理自己的文章</li>
+      <li>支持HTML标签进行高级排版</li>
+    </ul>
+  </div>
+
+  <div class="sidebar-card">
+    <h3>📊 文章统计</h3>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--subtext);">
+        <span>标题长度</span><b id="statTitleLen" style="color:var(--primary)">0/200</b>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--subtext);">
+        <span>正文字数</span><b id="statContentLen" style="color:var(--primary)">0 字</b>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--subtext);">
+        <span>预计阅读</span><b id="statReadTime" style="color:var(--primary)">约 0 分钟</b>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar-card" id="draftCard" style="display:none;">
+    <h3>💾 发现未完成草稿</h3>
+    <p style="font-size:13px;color:var(--subtext);margin-bottom:12px;">检测到您之前保存的草稿，是否恢复？</p>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-draft" onclick="restoreDraft()" style="flex:1;">恢复草稿</button>
+      <button class="btn-draft" onclick="discardDraft()" style="flex:1;">丢弃</button>
+    </div>
+  </div>
+</aside>
+
+</div></div></main>`;
+
+  const previewCard = document.createElement('div'); previewCard.className = 'preview-card';
+  previewCard.innerHTML = `<button class="preview-close" onclick="hidePreview()">✕</button><h2 id="previewTitle">预览</h2><div class="preview-body" id="previewBody"></div>`;
+  document.body.appendChild(previewCard);
+
+  const unsavedBanner = document.createElement('div'); unsavedBanner.className = 'unsaved-banner';
+  unsavedBanner.id = 'unsavedBanner';
+  unsavedBanner.innerHTML = '⚠️ 您有未保存的更改，离开前请记得保存草稿';
+  document.body.appendChild(unsavedBanner);
+
+  html += renderFooter();
+  document.getElementById('app').innerHTML = html;
+
+  let hasUnsavedChanges = false;
+  let autoSaveTimer = null;
+  const DRAFT_KEY = 'qingshe_draft';
+
+  function updateStats() {
+    const titleLen = document.getElementById('artTitle').value.length;
+    const contentLen = document.getElementById('artContent').value.length;
+    document.getElementById('wordCount').textContent = contentLen;
+    document.getElementById('statTitleLen').textContent = titleLen + '/200';
+    document.getElementById('statContentLen').textContent = contentLen + ' 字';
+    const readMin = Math.max(1, Math.ceil(contentLen / 400));
+    document.getElementById('statReadTime').textContent = '约 ' + readMin + ' 分钟';
+  }
+
+  function markUnsaved() {
+    hasUnsavedChanges = true;
+    document.getElementById('unsavedBanner').classList.add('show');
+    const ds = document.getElementById('draftStatus');
+    ds.classList.remove('draft-saved');
+    document.getElementById('draftText').textContent = '编辑中...';
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => autoSaveDraft(), 3000);
+  }
+
+  function markSaved() {
+    hasUnsavedChanges = false;
+    document.getElementById('unsavedBanner').classList.remove('show');
+    const ds = document.getElementById('draftStatus');
+    ds.classList.add('draft-saved');
+    document.getElementById('draftText').textContent = '已自动保存';
+  }
+
+  function getDraftData() {
+    return {
+      title: document.getElementById('artTitle').value,
+      category_id: document.getElementById('artCategory').value,
+      summary: document.getElementById('artSummary').value,
+      content: document.getElementById('artContent').value,
+      isEdit: isEdit,
+      editId: editId || '',
+      savedAt: Date.now()
+    };
+  }
+
+  function autoSaveDraft() {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(getDraftData()));
+      markSaved();
+    } catch(e) {}
+  }
+
+  window.saveDraft = function() {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(getDraftData()));
+      showToast('草稿已保存', 'success');
+      markSaved();
+    } catch(e) { showToast('保存失败', 'error'); }
+  };
+
+  window.restoreDraft = function() {
+    try {
+      const d = JSON.parse(localStorage.getItem(DRAFT_KEY));
+      if (d) {
+        document.getElementById('artTitle').value = d.title || '';
+        document.getElementById('artCategory').value = d.category_id || '';
+        document.getElementById('artSummary').value = d.summary || '';
+        document.getElementById('artContent').value = d.content || '';
+        document.getElementById('draftCard').style.display = 'none';
+        updateStats();
+        showToast('草稿已恢复', 'success');
+      }
+    } catch(e) {}
+  };
+
+  window.discardDraft = function() {
+    localStorage.removeItem(DRAFT_KEY);
+    document.getElementById('draftCard').style.display = 'none';
+    showToast('草稿已丢弃', 'info');
+  };
+
+  window.showPreview = function() {
+    const title = document.getElementById('artTitle').value || '(无标题)';
+    const content = document.getElementById('artContent').value || '(暂无内容)';
+    document.getElementById('previewTitle').textContent = title;
+    document.getElementById('previewBody').innerHTML = formatContent(content);
+    previewCard.classList.add('show');
+  };
+
+  window.hidePreview = function() { previewCard.classList.remove('show'); };
+
+  previewCard.addEventListener('click', e => { if (e.target === previewCard) hidePreview(); });
+
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') hidePreview(); });
+
+  document.getElementById('artTitle').addEventListener('input', () => { updateStats(); markUnsaved(); });
+  document.getElementById('artContent').addEventListener('input', () => { updateStats(); markUnsaved(); });
+  document.getElementById('artSummary').addEventListener('input', markUnsaved);
+  document.getElementById('artCategory').addEventListener('change', markUnsaved);
+
+  window.insertFormat = function(before, after) {
+    const ta = document.getElementById('artContent');
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    const text = ta.value.substring(start, end);
+    ta.setRangeText(before + text + after, start, end, 'end');
+    ta.focus(); updateStats(); markUnsaved();
+  };
+
+  window.insertLine = function(text) {
+    const ta = document.getElementById('artContent');
+    const pos = ta.selectionStart;
+    ta.value = ta.value.substring(0, pos) + '\n' + text + '\n' + ta.value.substring(pos);
+    ta.selectionStart = ta.selectionEnd = pos + text.length + 2;
+    ta.focus(); updateStats(); markUnsaved();
+  };
+
+  async function loadCategories() {
+    const res = await api('/categories');
+    if (res.code === 200) {
+      const sel = document.getElementById('artCategory');
+      res.data.forEach(c => { sel.innerHTML += `<option value="${c.id}">${escapeHtml(c.name)}</option>`; });
+    }
+  }
+
+  async function loadArticle() {
+    if (!isEdit) return;
+    const res = await api(`/articles/${editId}`);
+    if (res.code !== 200 || (res.data.user_id !== currentUser.id && currentUser.role !== 1)) {
+      showToast('无权编辑此文章', 'error');
+      setTimeout(() => history.back(), 1000);
+      return;
+    }
+    document.getElementById('artTitle').value = res.data.title;
+    document.getElementById('artCategory').value = res.data.category_id;
+    document.getElementById('artSummary').value = res.data.summary || '';
+    document.getElementById('artContent').value = res.data.content.replace(/<br\s*\/?>/gi, '\n').replace(/<\/?p>/gi, '\n\n');
+    updateStats();
+  }
+
+  async function submitArticle(status) {
+    const title = document.getElementById('artTitle').value.trim();
+    const content = document.getElementById('artContent').value.trim();
+    const category_id = document.getElementById('artCategory').value;
+    const summary = document.getElementById('artSummary').value.trim();
+    if (!title) { showToast('标题不能为空', 'error'); return; }
+    if (!content) { showToast('内容不能为空', 'error'); return; }
+    let body = { title, content, category_id, status };
+    if (summary) body.summary = summary;
+    let url = '/articles', method = 'POST';
+    if (isEdit) { url = `/articles/${editId}`; method = 'PUT'; }
+    const res = await api(url, { method, body: JSON.stringify(body) });
+    if (res.code === 200) {
+      localStorage.removeItem(DRAFT_KEY);
+      const tip = res.data && res.data.status === 3 ? '文章已提交审核，请耐心等待站长通过 ✅' : (res.message || '操作成功');
+      showToast(tip, 'success');
+      setTimeout(() => window.location.href = '/index.html', 1000);
+    } else {
+      showToast(res.message, 'error');
+    }
+  }
+
+  document.getElementById('articleForm').onsubmit = e => { e.preventDefault(); submitArticle(1); };
+
+  window.addEventListener('beforeunload', e => {
+    if (hasUnsavedChanges) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+
+  try {
+    const savedDraft = JSON.parse(localStorage.getItem(DRAFT_KEY));
+    if (savedDraft && savedDraft.content && !(isEdit && editId)) {
+      document.getElementById('draftCard').style.display = 'block';
+    }
+  } catch(e) {}
+
+  await loadCategories();
+  await loadArticle();
+  updateStats();
+
+  if (isEdit) markSaved();
+})();
+</script>
+</body>
+</html>

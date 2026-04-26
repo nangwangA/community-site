@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文章详情 - 轻社区</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="/js/common.js"></script>
+<script src="/js/nav.js"></script>
+<script>
+(async function() {
+  currentUser = await checkLogin();
+  const articleId = new URLSearchParams(window.location.search).get('id');
+  if (!articleId) { showToast('缺少文章ID', 'error'); setTimeout(() => history.back(), 1000); return; }
+
+  let html = renderNavbar('article', currentUser);
+  html += `<div class="main-layout"><div class="content-area" id="contentArea">`;
+  html += `<div class="loading-spinner"><div></div><div></div><div></div><p>加载中...</p></div>`;
+  html += `</div></div>`;
+  html += renderFooter();
+  document.getElementById('app').innerHTML = html;
+
+  let articleData = null;
+  let isLiked = false, isFavorited = false;
+
+  async function loadArticle() {
+    try {
+      const res = await api('/articles/' + articleId);
+      if (res.code !== 200) { showToast(res.message || '文章不存在', 'error'); return; }
+      articleData = res.data;
+      renderArticle();
+    } catch(e) { showToast('加载失败', 'error'); }
+  }
+
+  function renderArticle() {
+    const a = articleData;
+    const el = document.getElementById('contentArea');
+    el.innerHTML = `
+<div class="article-detail">
+  <h1>${escapeHtml(a.title)}</h1>
+  <div class="article-meta-bar">
+    <div class="article-author">
+      <div class="article-avatar-lg">${(a.author_name || '?').charAt(0)}</div>
+      <span>${escapeHtml(a.author_name || '匿名')}</span>
+    </div>
+    <span>${formatDate(a.created_at)}</span>
+    <span>${a.category_name || '未分类'}</span>
+    <span>👁 ${a.view_count || 0}次浏览</span>
+  </div>
+  <div class="article-body">${formatContent(a.content)}</div>
+
+  <div class="article-actions">
+    <button class="action-btn" id="likeBtn" onclick="toggleLike()">❤️ 点赞 <span id="likeCount">${a.like_count || 0}</span></button>
+    <button class="action-btn" id="favBtn" onclick="toggleFav()">⭐ 收藏</button>
+    ${currentUser && currentUser.id === a.user_id ? `<button class="action-btn" onclick="editArticle()">✏️ 编辑</button>` : ''}
+  </div>
+
+  <div class="comment-section">
+    <h3>💬 评论 (${a.comment_count || 0})</h3>
+    <div class="comment-form" id="commentFormArea" style="${currentUser ? '' : 'display:none'}">
+      <textarea id="commentInput" placeholder="写下你的评论..."></textarea>
+      <button class="btn" onclick="submitComment()">发表评论</button>
+    </div>
+    <p style="color:var(--subtext);font-size:14px;margin-bottom:16px;" id="loginHint" style="${currentUser ? 'display:none' : ''}">
+      <a href="/login.html">登录</a> 后可参与评论
+    </p>
+    <div id="commentsList"><div class="loading-spinner" style="padding:20px;"><div></div><div></div><div></div><p style="font-size:13px;">加载评论...</p></div></div>
+  </div>
+</div>`;
+    loadComments();
+  }
+
+  async function loadComments() {
+    try {
+      const res = await api('/comments/article/' + articleId + '?pageSize=50');
+      if (res.code !== 200) return;
+      const list = res.data?.list || [];
+      const repliesMap = res.data?.replies || {};
+      const el = document.getElementById('commentsList');
+      if (!list.length) { el.innerHTML = '<p style="color:var(--subtext);padding:20px;text-align:center;">暂无评论，来写第一条吧~</p>'; return; }
+      el.innerHTML = '';
+      for (const c of list) {
+        const item = document.createElement('div');
+        item.className = 'comment-item';
+        item.innerHTML = `
+          <div class="comment-author">${escapeHtml(c.nickname || c.user_name || '匿名')}<span class="comment-delete" onclick="delComment(${c.id})" style="${canDelete(c) ? '' : 'display:none'}">删除</span></div>
+          <div class="comment-content">${escapeHtml(c.content).replace(/\n/g, '<br>')}</div>
+          <div class="comment-time">${formatDate(c.created_at)}${c.reply_to_nickname ? ` · 回复 @${c.reply_to_nickname}` : ''}`;
+        el.appendChild(item);
+        const replies = repliesMap[c.id] || [];
+        for (const r of replies) {
+          const reply = document.createElement('div');
+          reply.className = 'comment-reply';
+          reply.innerHTML = `
+            <strong style="color:var(--primary)">${r.nickname || r.user_name || '?'}</strong>: ${escapeHtml(r.content)}
+            <span class="comment-delete" onclick="delComment(${r.id})" style="${canDelete(r) ? '' : 'display:none'}">删除</span>`;
+          el.appendChild(reply);
+        }
+      }
+    } catch(e) { console.error('加载评论失败:', e); }
+  }
+
+  function canDelete(c) {
+    if (!currentUser) return false;
+    if (currentUser.role === 1) return true;
+    return currentUser.id === c.user_id;
+  }
+
+  window.submitComment = async function() {
+    if (!currentUser) return showToast('请先登录', 'warning');
+    const content = document.getElementById('commentInput').value.trim();
+    if (!content) return showToast('请输入评论内容', 'warning');
+    try {
+      const r = await api('/comments/article/' + articleId, { method: 'POST', body: JSON.stringify({ content }) });
+      if (r.code === 200) { document.getElementById('commentInput').value = ''; showToast('评论成功', 'success'); loadComments(); }
+      else showToast(r.message, 'error');
+    } catch(e) { showToast('发送失败', 'error'); }
+  };
+
+  window.delComment = async function(id) {
+    if (!confirm('确定删除？')) return;
+    const r = await api('/comments/' + id, { method: 'DELETE' });
+    if (r.code === 200) { showToast('已删除', 'success'); loadComments(); }
+    else showToast(r.message, 'error');
+  };
+
+  window.toggleLike = async function() {
+    if (!currentUser) return showToast('请先登录', 'warning');
+    try {
+      const r = await api('/articles/' + articleId + '/like', { method: 'POST' });
+      if (r.code === 200) { isLiked = !isLiked; const btn = document.getElementById('likeBtn'); btn.classList.toggle('active', isLiked); document.getElementById('likeCount').textContent = r.data.like_count || (isLiked ? (parseInt(articleData.like_count||0)+1) : (articleData.like_count||0)); }
+      else showToast(r.message, 'info');
+    } catch(e) {}
+  };
+
+  window.toggleFav = async function() {
+    if (!currentUser) return showToast('请先登录', 'warning');
+    try {
+      const r = await api('/articles/' + articleId + '/favorite', { method: 'POST' });
+      if (r.code === 200) { isFavorited = !isFavorited; const btn = document.getElementById('favBtn'); btn.classList.toggle('active', isFavorited); btn.textContent = isFavorited ? '⭐ 已收藏' : '⭐ 收藏'; showToast(isFavorited ? '已收藏' : '已取消收藏', 'success'); }
+      else showToast(r.message, 'info');
+    } catch(e) {}
+  };
+
+  window.editArticle = function() { window.location.href = '/publish.html?id=' + articleId; };
+
+  await loadArticle();
+})();
+</script>
+</body>
+</html>

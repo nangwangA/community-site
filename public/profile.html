@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>个人中心 - 轻社区</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="/js/common.js"></script>
+<script src="/js/nav.js"></script>
+<script>
+(async function() {
+  currentUser = await checkLogin();
+  if (!currentUser) { showToast('请先登录', 'warning'); setTimeout(() => window.location.href = '/login.html', 1200); return; }
+
+  let html = renderNavbar('profile', currentUser);
+  html += `<div class="main-layout"><div class="content-area">`;
+  html += `
+<div class="sidebar-layout">
+  <aside class="profile-sidebar">
+    <div class="card" style="padding:20px;">
+      <div class="profile-head">
+        <div class="avatar-lg" id="avatarEl">${(currentUser.nickname || currentUser.username || '?').charAt(0)}</div>
+        <div><p class="name-lg">${escapeHtml(currentUser.nickname || currentUser.username)}</p><p class="sub-text">${greetingByHour()}好，欢迎回来</p></div>
+      </div>
+      <button class="btn btn-light btn-sm" onclick="document.getElementById('avatarFileInput').click()">更换头像</button>
+      <input type="file" id="avatarFileInput" accept="image/*" style="display:none;">
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-box"><b id="statArticles">-</b><span>发布文章</span></div>
+      <div class="stat-box"><b id="statDays">-</b><span>账号天数</span></div>
+      <div class="stat-box"><b>在线</b><span>账号状态</span></div>
+    </div>
+
+    <h3 style="color:var(--primary);margin:16px 0 10px;font-size:16px;">最近发布</h3>
+    <div class="recent-list" id="recentList"><div class="recent-item">加载中...</div></div>
+  </aside>
+
+  <section class="form-card">
+    <ul class="profile-menu" style="margin-bottom:20px;">
+      <a href="#" data-tab="info" class="active">📝 个人资料</a>
+      <a href="#" data-tab="articles">📄 我的文章</a>
+      <a href="#" data-tab="comments">💬 我的评论</a>
+      <a href="#" data-tab="favorites">⭐ 我的收藏</a>
+      <a href="#" data-tab="security">🔒 安全设置</a>
+    </ul>
+
+    <div id="tabContent"></div>
+  </section>
+</div>`;
+  html += `</div></div>`;
+  html += renderFooter();
+  document.getElementById('app').innerHTML = html;
+
+  let currentTab = new URLSearchParams(window.location.search).get('tab') || 'info';
+  document.querySelectorAll('.profile-menu a[data-tab]').forEach(a => { a.onclick = e => { e.preventDefault(); currentTab = a.dataset.tab; updateMenu(); loadTab(); }; });
+
+  function updateMenu() {
+    document.querySelectorAll('.profile-menu a').forEach(x => x.classList.toggle('active', x.dataset.tab === currentTab));
+    history.replaceState(null, '', '?tab=' + currentTab);
+  }
+  function showLoading(el) { el.innerHTML = '<div class="loading-spinner"><div></div><div></div><div></div><p>加载中...</p></div>'; }
+  function hideLoading(el, h) { el.innerHTML = h; }
+
+  async function loadStats() {
+    try {
+      const [articlesRes, profileRes] = await Promise.all([api('/articles/my?pageSize=5'), api('/user/profile')]);
+      if (articlesRes.code === 200) {
+        document.getElementById('statArticles').textContent = articlesRes.data?.pagination?.total || 0;
+        const list = articlesRes.data?.list || [];
+        const rl = document.getElementById('recentList');
+        if (!list.length) rl.innerHTML = '<div class="recent-item">暂无文章记录</div>';
+        else rl.innerHTML = list.map(a => `<a href="/article.html?id=${a.id}" class="recent-item">${formatDate(a.created_at)} · ${escapeHtml(a.title)}</a>`).join('');
+      }
+      if (profileRes.code === 200 && profileRes.data) {
+        const p = profileRes.data;
+        const joined = p.created_at ? new Date(p.created_at) : null;
+        if (joined) {
+          const days = Math.max(1, Math.floor((Date.now() - joined.getTime()) / 86400000) + 1);
+          document.getElementById('statDays').textContent = days;
+        }
+        const av = document.getElementById('avatarEl');
+        if (p.avatar) { av.classList.add('has-image'); av.style.backgroundImage = `url('${escapeAttr(p.avatar)}')`; av.style.backgroundColor = '#fff'; av.textContent = ''; }
+        else { av.style.backgroundImage = 'none'; av.textContent = (currentUser.nickname || currentUser.username).charAt(0); }
+      }
+    } catch(e) {}
+  }
+
+  async function loadTab() {
+    const el = document.getElementById('tabContent');
+    switch (currentTab) {
+      case 'info': await loadInfo(el); break;
+      case 'articles': await loadMyArticles(el); break;
+      case 'comments': await loadMyComments(el); break;
+      case 'favorites': await loadFavorites(el); break;
+      case 'security': await loadSecurity(el); break;
+    }
+  }
+
+  async function loadInfo(el) {
+    showLoading(el);
+    try {
+      const res = await api('/user/profile');
+      if (res.code !== 200) return hideLoading(el, '<p style="color:var(--subtext)">加载失败</p>');
+      const u = res.data;
+      hideLoading(el, `
+<div class="field"><label>用户名</label><input value="${escapeAttr(u.username)}" disabled style="opacity:.6"></div>
+<div class="field"><label>昵称</label><input id="editNickname" value="${escapeAttr(u.nickname || '')}" placeholder="你的昵称"></div>
+<div class="field"><label>简介</label><textarea id="editBio" placeholder="介绍一下自己...">${escapeAttr(u.bio || '')}</textarea></div>
+<div class="action-row"><button class="btn" onclick="saveProfile()">保存修改</button></div>`);
+    } catch(e) { hideLoading(el, '<p style="color:var(--subtext)">网络错误</p>'); }
+  }
+
+  window.saveProfile = async function() {
+    try {
+      const r = await api('/user/profile', { method: 'PUT', body: JSON.stringify({ nickname: document.getElementById('editNickname').value.trim(), bio: document.getElementById('editBio').value.trim() }) });
+      showToast(r.code === 200 ? '保存成功' : r.message, r.code === 200 ? 'success' : 'error');
+      if (r.code === 200) setTimeout(() => location.reload(), 800);
+    } catch(e) { showToast('保存失败', 'error'); }
+  };
+
+  async function loadMyArticles(el) {
+    showLoading(el);
+    try {
+      const r = await api('/articles/my?pageSize=15');
+      if (r.code !== 200) return;
+      const list = r.data?.list || [];
+      if (!list.length) return hideLoading(el, '<p style="color:var(--subtext);padding:30px;text-align:center;">还没有发表过文章哦~<br><a href="/publish.html" class="btn btn-light btn-sm" style="margin-top:12px;">去写第一篇</a></p>');
+      const stMap = { 0: '<span style="color:#b08968;font-size:12px;">草稿</span>', 1: '<span style="color:#6f8c76;font-size:12px;">已发布</span>', 2: '<span style="color:#c75d5d;font-size:12px;">已拒绝</span>', 3: '<span style="color:#5b8bd9;font-size:12px;">待审核中</span>' };
+      hideLoading(el, `<div class="article-list">${list.map(a => `<div class="article-card-admin" style="cursor:pointer;" onclick="location.href='/article.html?id=${a.id}'"><div style="display:flex;justify-content:space-between;align-items:center;"><h3 class="article-title-admin" style="margin:0;">${escapeHtml(a.title)}</h3>${stMap[a.status]||''}</div><p class="meta">${formatDate(a.created_at)} · ${a.category_name||'-'} · 👁${a.view_count||0}</p></div>`).join('')}</div>`);
+    } catch(e) { hideLoading(el, '<p style="color:var(--subtext)">加载失败</p>'); }
+  }
+
+  async function loadMyComments(el) {
+    showLoading(el);
+    try {
+      const r = await api('/comments?user_id=' + currentUser.id + '&pageSize=30');
+      if (r.code !== 200) return;
+      const list = r.data?.list || [];
+      if (!list.length) return hideLoading(el, '<p style="color:var(--subtext);padding:30px;text-align:center;">还没有评论过~</p>');
+      hideLoading(el, list.map(c => `<div class="comment-item"><div class="comment-author">${escapeHtml(c.user_name||currentUser.username)}</div><div class="comment-content">${escapeHtml(c.content).slice(0,120)}</div><div class="comment-time">${formatDate(c.created_at)} · <a href="/article.html?id=${c.article_id}">查看文章</a></div></div>`).join(''));
+    } catch(e) { hideLoading(el, '<p style="color:var(--subtext)">加载失败</p>'); }
+  }
+
+  async function loadFavorites(el) {
+    showLoading(el);
+    try {
+      const r = await api('/user/favorites?pageSize=20');
+      if (r.code !== 200) return;
+      const list = r.data || [];
+      if (!list.length) return hideLoading(el, '<p style="color:var(--subtext);padding:30px;text-align:center;">还没有收藏文章~</p>');
+      hideLoading(el, list.map(a => `<div class="card" style="cursor:pointer;margin-bottom:10px;" onclick="location.href='/article.html?id=${a.id}'"><h3>${escapeHtml(a.title)}</h3><p class="meta">${formatDate(a.created_at)} · ${a.author_name||'-'}</p></div>`).join(''));
+    } catch(e) { hideLoading(el, '<p style="color:var(--subtext)">加载失败</p>'); }
+  }
+
+  async function loadSecurity(el) {
+    hideLoading(el, `
+<h3 style="color:var(--primary);margin-bottom:14px;">修改密码</h3>
+<div class="field"><label>当前密码</label><input type="password" id="oldPwd" placeholder="请输入当前密码"></div>
+<div class="field"><label>新密码</label><input type="password" id="newPwd" placeholder="至少6位"></div>
+<div class="field"><label>确认新密码</label><input type="password" id="confirmPwd" placeholder="再次输入新密码"></div>
+<div class="action-row"><button class="btn" onclick="changePassword()">确认修改</button></div>`);
+  }
+
+  window.changePassword = async function() {
+    const oldP = document.getElementById('oldPwd').value;
+    const newP = document.getElementById('newPwd').value;
+    const confP = document.getElementById('confirmPwd').value;
+    if (!oldP || !newP) return showToast('请填写完整', 'warning');
+    if (newP.length < 6) return showToast('新密码至少6位', 'warning');
+    if (newP !== confP) return showToast('两次输入不一致', 'warning');
+    try {
+      const r = await api('/user/password', { method: 'PUT', body: JSON.stringify({ oldPassword: oldP, newPassword: newP }) });
+      showToast(r.message, r.code === 200 ? 'success' : 'error');
+      if (r.code === 200) { document.getElementById('oldPwd').value = ''; document.getElementById('newPwd').value = ''; document.getElementById('confirmPwd').value = ''; }
+    } catch(e) { showToast('修改失败', 'error'); }
+  };
+
+  /* ===== 头像裁剪 ===== */
+  const avatarInput = document.getElementById('avatarFileInput');
+  const cropModal = document.createElement('div'); cropModal.className = 'crop-modal';
+  cropModal.innerHTML = `
+<div class="crop-card">
+  <h3 class="crop-title">裁剪头像</h3>
+  <p class="crop-sub">拖动图片调整位置，滑动缩放后保存。</p>
+  <div class="crop-canvas-wrap"><canvas id="cropCanvas" width="260" height="260"></canvas></div>
+  <div class="zoom-row"><span>缩放</span><input type="range" id="zoomRange" min="1" max="3" step="0.01" value="1"></div>
+  <div class="action-row"><button class="btn btn-light" id="cancelCropBtn">取消</button><button class="btn" id="saveCropBtn">保存头像</button></div>
+</div>`;
+  document.body.appendChild(cropModal);
+
+  const canvas = document.getElementById('cropCanvas'), ctx = canvas.getContext('2d');
+  let cs = { image: null, baseScale: 1, scale: 1, offsetX: 0, offsetY: 0, dragging: false, startX: 0, startY: 0 };
+  const zoomRange = document.getElementById('zoomRange');
+
+  function clampOffsets() {
+    if (!cs.image) return;
+    const iw = cs.image.width * cs.baseScale * cs.scale, ih = cs.image.height * cs.baseScale * cs.scale;
+    const bx = Math.max(0, (iw - canvas.width)/2), by = Math.max(0, (ih - canvas.height)/2);
+    cs.offsetX = Math.min(bx, Math.max(-bx, cs.offsetX)); cs.offsetY = Math.min(by, Math.max(-by, cs.offsetY));
+  }
+  function drawCanvas() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#ddd5ca'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!cs.image) return;
+    const dw = cs.image.width * cs.baseScale * cs.scale, dh = cs.image.height * cs.baseScale * cs.scale;
+    ctx.drawImage(cs.image, (canvas.width-dw)/2+cs.offsetX, (canvas.height-dh)/2+cs.offsetY, dw, dh);
+  }
+  function openCrop(img) {
+    cs.image = img; cs.baseScale = Math.max(canvas.width/img.width, canvas.height/img.height);
+    cs.scale = 1; cs.offsetX = 0; cs.offsetY = 0; zoomRange.value = '1';
+    cropModal.classList.add('show'); drawCanvas();
+  }
+  function closeCrop() { cropModal.classList.remove('show'); cs.image = null; cs.dragging = false; canvas.classList.remove('dragging'); }
+  function getPt(e) { return e.touches?.[0] || e.changedTouches?.[0] || e; }
+
+  avatarInput.onchange = function() {
+    const f = this.files?.[0]; if (!f) return; if (!f.type.startsWith('image/')) return showToast('请选择图片');
+    const r = new FileReader(); r.onload = () => { const i = new Image(); i.onload = () => openCrop(i); i.src = String(r.result||''); }; r.readAsDataURL(f);
+  };
+  zoomRange.oninput = () => { cs.scale = Number(zoomRange.value); clampOffsets(); drawCanvas(); };
+  canvas.onmousedown = e => { if (!cs.image) return; const pt = getPt(e); cs.dragging=true; cs.startX=pt.clientX; cs.startY=pt.clientY; canvas.classList.add('dragging'); };
+  window.onmousemove = e => { if (!cs.dragging) return; const pt = getPt(e); cs.offsetX+=pt.clientX-cs.startX; cs.offsetY+=pt.clientY-cs.startY; cs.startX=pt.clientX; cs.startY=pt.clientY; clampOffsets(); drawCanvas(); };
+  window.onmouseup = () => { cs.dragging=false; canvas.classList.remove('dragging'); };
+  canvas.ontouchstart = e => { if (!cs.image) return; e.preventDefault(); const pt=getPt(e.touches[0]); cs.dragging=true; cs.startX=pt.clientX; cs.startY=pt.clientY; canvas.classList.add('dragging'); };
+  canvas.ontouchmove = e => { if(!cs.dragging)return;e.preventDefault();const pt=getPt(e.touches[0]);cs.offsetX+=pt.clientX-cs.startX;cs.offsetY+=pt.clientY-cs.startY;cs.startX=pt.clientX;cs.startY=pt.clientY;clampOffsets();drawCanvas();};
+  canvas.ontouchend = ()=>{cs.dragging=false;canvas.classList.remove('dragging');};
+
+  document.getElementById('cancelCropBtn').onclick = closeCrop;
+  document.getElementById('saveCropBtn').onclick = async () => {
+    if (!cs.image) return;
+    const tmp = document.createElement('canvas'); tmp.width = tmp.height = 120; const tctx = tmp.getContext('2d');
+    tctx.fillStyle='#ddd5ca';tctx.fillRect(0,0,120,120);tctx.beginPath();tctx.arc(60,60,60,0,Math.PI*2);tctx.clip();
+    const sx=(canvas.width-cs.image.width*cs.baseScale*cs.scale)/2+cs.offsetX,sy=(canvas.height-cs.image.height*cs.baseScale*cs.scale)/2+cs.offsetY;
+    const sw=cs.image.width*cs.baseScale*cs.scale,sh=cs.image.height*cs.baseScale*cs.scale;
+    tctx.drawImage(cs.image,60-sw/2+sx/cs.image.width*sw,60-sh/2+sy/cs.image.height*sh,sw,sh);
+    const dataUrl = tmp.toDataURL('image/png',0.85);
+    closeCrop();
+    try { const r=await api('/user/avatar',{method:'PUT',body:JSON.stringify({avatar:dataUrl})}); if(r.code===200){showToast('头像更新成功','success');setTimeout(()=>location.reload(),600);} else showToast(r.message,'error');}catch(e){showToast('上传失败','error');}
+  };
+
+  updateMenu(); loadStats(); loadTab();
+})();
+</script>
+</body>
+</html>
